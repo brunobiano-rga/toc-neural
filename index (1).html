@@ -1,0 +1,615 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Credits — a network of award-winning work</title>
+<style>
+:root{
+  --bg:#EFF0EB; --ink:#1C1C1A; --mute:#8D8E88; --faint:#BDBEB8;
+  --paper:#FFFFFF; --red:#E5432A; --sel:#F1D44B;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);
+  font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;overflow:hidden}
+#stage{position:fixed;inset:0}
+#stage svg{width:100%;height:100%;display:block}
+
+/* grafo */
+.n{cursor:pointer}
+.n:focus{outline:none}
+.n:focus-visible .ring{stroke:var(--ink);stroke-dasharray:2 2}
+.n:hover .lbl{fill:#000}
+.lbl{font-size:11.5px;fill:var(--ink);text-anchor:middle;paint-order:stroke;stroke:var(--bg);stroke-width:3px;stroke-linejoin:round}
+.sub{font-size:8.5px;letter-spacing:.09em;fill:var(--mute);text-anchor:middle;text-transform:uppercase;paint-order:stroke;stroke:var(--bg);stroke-width:3px}
+.struck{text-decoration:line-through}
+.badge{font-size:7.5px;text-anchor:middle;dominant-baseline:central;fill:var(--ink)}
+#edges path{fill:none;stroke:var(--ink);stroke-width:.8}
+#edges path.dash{stroke-dasharray:3 3}
+#edges path.dot{stroke-dasharray:1 3.5;stroke-linecap:round;stroke-width:1}
+
+/* legenda */
+#legend{position:fixed;left:24px;top:22px;font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--mute);line-height:1.9}
+#legend b{font-weight:400;color:var(--ink);letter-spacing:.1em}
+#legend .it{display:flex;align-items:center;gap:8px}
+#legend svg{width:11px;height:11px;overflow:visible}
+#legend .note{margin-top:8px;text-transform:none;letter-spacing:0;font-size:10.5px;max-width:200px;line-height:1.4}
+
+/* painel */
+#panel{position:fixed;top:50%;right:max(24px,6vw);transform:translateY(-50%);width:300px;
+  max-height:calc(100vh - 48px);overflow:auto;display:flex;flex-direction:column;gap:6px;
+  font-size:11.5px;line-height:1.45;scrollbar-width:none}
+#panel::-webkit-scrollbar{display:none}
+.card{background:var(--paper);padding:4px 14px;border-radius:2px}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;text-align:left}
+button:focus-visible{outline:1px dashed var(--ink);outline-offset:2px}
+.row{display:flex;align-items:center;gap:10px;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;padding:9px 0;width:100%}
+.row .ic{width:12px;display:flex;justify-content:center}
+.row .ic svg{width:9px;height:9px;overflow:visible}
+.row .act{margin-left:auto;font-size:12px;letter-spacing:0;width:14px;text-align:center}
+.dotred{width:7px;height:7px;border-radius:50%;background:var(--red);display:block}
+.sec{border-top:1px dashed var(--ink)}
+.sec:first-child{border-top:0}
+.body{padding:0 0 12px 22px}
+.ttl{font-size:12px}
+.s1{color:var(--mute)}
+.s2{color:var(--mute);font-size:9px;letter-spacing:.1em;text-transform:uppercase;margin-top:1px}
+.desc p{margin:12px 0 0;text-indent:1.6em}
+.intro{padding:0 0 10px 22px}
+.intro p{margin:0 0 8px;text-indent:1.6em}
+.grp{font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--mute);margin:10px 0 3px}
+.grp:first-child{margin-top:2px}
+.grp button{text-transform:inherit;letter-spacing:inherit}
+.li{display:flex;justify-content:space-between;gap:12px;padding:1.5px 0}
+.li .r{color:var(--mute);text-align:right}
+.li > .lk{flex-shrink:0}
+.stack{padding:3px 0 5px}
+.stack .s2{margin-top:0}
+a.lk{color:inherit;text-decoration:none}
+.lk:hover{text-decoration:underline}
+.lk.struck{text-decoration:line-through}
+.note{color:var(--mute);margin:2px 0 6px}
+
+@media (max-width:759px){
+  #panel{top:auto;bottom:10px;left:10px;right:10px;width:auto;transform:none;max-height:46vh}
+  #legend{left:14px;top:12px}
+  #legend .note,#legend .it{display:none}
+}
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto}}
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <svg id="svg" aria-label="Credits network">
+    <g id="edges"></g>
+    <g id="nodes"></g>
+  </svg>
+</div>
+
+<div id="legend" aria-hidden="true"></div>
+<aside id="panel" aria-live="polite"></aside>
+
+<script>
+/* ------------------------------------------------------------------
+   DATA MODEL
+   Entities:  case, organization, person, discipline, award.
+   Relations: person —[role, discipline]→ case         (credit)
+              person —[title]→ organization            (affiliation)
+              organization —[function]→ case           (client, agency, studio…)
+              award → case | organization | person
+   Example case: Spotify "Spreadbeats" by FCB New York.
+   Credits compiled from public sources; not exhaustive.
+------------------------------------------------------------------- */
+const HOME = 'c1';
+
+const N = {
+  c1:{type:'case',title:'Spreadbeats',meta:'B2B music video inside a spreadsheet',years:'2024–2025',
+    desc:[
+      'Media planners saw Spotify as an audio-only line in their plans, even after it launched video ad units. FCB New York went to the place planners spend their day: the media plan spreadsheet.',
+      'With John Summit’s track “Shiver”, the team coded a four-minute music video directly into the Excel files Spotify’s sales team sends to clients, using only native cells, formulas, charts and macros, in a file under 10 MB. Salespeople could generate personalized versions for each planner.',
+      'It was sent to 5,800 media planners in 14 countries, and became the most awarded entry at The One Show 2025, where it won Best of Show.'
+    ],
+    sources:[
+      ['The One Club: Best of Show announcement','https://www.oneclub.org/press/-tos2025-may16-winners'],
+      ['The One Club: Gold Pencil entry and creative idea','https://www.oneclub.org/awards/theoneshow/-award/57159/spreadbeats/'],
+      ['Uncharted Limbo Collective: project page and full credits','https://www.uncharted-limbo.com/spreadbeats'],
+      ['Cannes Lions entry (reach and audience)','https://lovethework.com/work-awards/entries/712082'],
+    ]},
+
+  // disciplines, in the order the work usually moves through them
+  'd-client':{type:'disc',title:'Client & Brand',desc:'The brief owners. Spotify’s business marketing team commissioned the work and owned the problem: being seen as more than audio.'},
+  'd-account':{type:'disc',title:'Account & Leadership',desc:'Agency leadership and account management, who hold the client relationship and keep the project moving.'},
+  'd-strategy':{type:'disc',title:'Strategy',desc:'Planning and insight: media planners decide budgets inside spreadsheets, so the spreadsheet becomes the medium.'},
+  'd-creative':{type:'disc',title:'Creative',desc:'Concept, copy and creative direction.'},
+  'd-design':{type:'disc',title:'Art & Design',desc:'Art direction and design for a world built out of rows and columns.'},
+  'd-production':{type:'disc',title:'Agency Production',desc:'Producers who coordinated studios across three countries, budgets and delivery.'},
+  'd-tech':{type:'disc',title:'Creative Technology',desc:'The engineering that turned Excel into a real-time audio-visual engine: sync, a timeline editor, a custom codec, 12 fps on a 256 × 256 grid.'},
+  'd-post':{type:'disc',title:'Animation & Post',desc:'Direction, concept art, pixel art, animation and editing of every frame.'},
+  'd-music':{type:'disc',title:'Music & Sound',desc:'The track, and the audio that had to stay frame-accurate inside a spreadsheet.'},
+  'd-film':{type:'disc',title:'Case Study Film',desc:'The video that told the story to juries and to the industry.'},
+
+  // organizations
+  'o-spotify':{type:'org',title:'Spotify',kind:'Client',city:'New York',desc:'Brand and client. Spotify Advertising needed media planners to see it as a video platform too. Named Brand of the Year at The One Show 2025 and ADC 104th.'},
+  'o-fcb':{type:'org',title:'FCB New York',kind:'Agency',city:'New York',desc:'Lead creative agency. Agency of the Year at The One Show 2025 and ADC 104th. Following Omnicom’s acquisition of IPG, Campaign reported in 2026 that the team is carrying over to BBDO.'},
+  'o-ulc':{type:'org',title:'Uncharted Limbo Collective',kind:'Production Company',city:'London',desc:'Creative technology studio that engineered the music video to play natively inside Excel. Its credits page is the most complete public list for this case.'},
+  'o-colossal':{type:'org',title:'Colossal',kind:'Animation & Post',city:'Curitiba',desc:'Animation and post-production company behind the video’s frames, with direction by the duo Maldita.'},
+  'o-dahouse':{type:'org',title:'DaHouse Audio',kind:'Audio',city:'Los Angeles',desc:'Credited audio partner on the campaign.'},
+  'o-bogota':{type:'org',title:'BOGOTA',kind:'Case Study Film',city:'Curitiba',desc:'Studio that produced the support case study video.'},
+
+  // awards linked to the case
+  'a-oneshow':{type:'award',title:'Best of Show',show:'The One Show 2025',cat:'Most awarded entry of the year',
+    desc:'Top honor at The One Show 2025, plus Best of Discipline in four disciplines.',
+    breakdown:[['Best of Discipline','Branded Entertainment, Creative Use of Data, Direct Marketing, Moving Image Craft & Production'],['Gold Pencil','28'],['Silver Pencil','10'],['Bronze Pencil','5'],['Merit','10']],
+    golds:['Branded Entertainment: B2B Communications','Branded Entertainment: Innovation / Execution','Creative Use of Data: B2B Communications','Creative Use of Data: Data Visualization','Creative Use of Technology: B2B Communications','Design: B2B Communications','Design: Craft / Animation','Design: Craft / Art Direction','Design: Innovation / Execution','Design: Innovation / Use of Media','Direct Marketing: B2B Communications','Direct Marketing: Craft / Use of Technology','Direct Marketing: Email & Newsletters','Experiential & Immersive: B2B Communications','Experiential & Immersive: Innovation / Execution','Film & Video: Innovation / Use of Media','Interactive, Online & Mobile: B2B Communications','Interactive, Online & Mobile: Craft / Animation','Interactive, Online & Mobile: Craft / Use of Technology','Interactive, Online & Mobile: Creative Use of Data','Interactive, Online & Mobile: Innovation / Execution','Moving Image Craft & Production: Innovation','Moving Image Craft & Production: Use of Technology','Music & Sound Craft: Innovation','Music & Sound Craft: Use of Technology','Public Relations: B2B Communications','Public Relations: Digital & Online','Radio & Audio-First: B2B Communications']},
+  'a-adc':{type:'award',title:'Black Cube',show:'ADC 104th Annual Awards',cat:'Best of Show',
+    desc:'Best of Show at the ADC 104th Annual Awards, held during The One Club’s Creative Week 2025.',
+    breakdown:[['Best of Discipline','Advertising, Experiential Design, Interactive'],['Gold Cube','8'],['Silver Cube','4'],['Bronze Cube','4'],['Merit','1']]},
+  'a-cannes':{type:'award',title:'Grand Prix',show:'Cannes Lions 2024',cat:'Digital Craft',
+    desc:'Grand Prix in Digital Craft for technological achievement.',
+    breakdown:[['Gold','Digital Craft, Direct'],['Silver','Entertainment Lions for Music; Creative B2B (3)'],['Bronze','Creative Data (3)'],['Shortlist','Titanium']]},
+  'a-dad':{type:'award',title:'Black Pencil',show:'D&AD 2025',cat:'Digital Design / Digital Experiences',
+    desc:'D&AD’s highest honor, in Digital Design.',
+    breakdown:[['Yellow Pencil','3'],['Graphite Pencil','8'],['Wood Pencil','4']]},
+  'a-clio':{type:'award',title:'Grand Clio',show:'Clio Awards 2025',cat:'Multiple disciplines',
+    desc:'Grand Clios across several disciplines, according to the production company’s award list.',
+    breakdown:[['Grand Clio','Experience / Activation, Creative Use of Data, Design, Design Craft, Direct']]},
+
+  // awards linked to organizations and people
+  'a-agency':{type:'award',title:'Agency of the Year',show:'The One Show 2025 and ADC 104th',cat:'Agency honor',desc:'FCB New York topped both shows’ agency rankings, driven largely by Spreadbeats.'},
+  'a-brand':{type:'award',title:'Brand of the Year',show:'The One Show 2025 and ADC 104th',cat:'Brand honor',desc:'Spotify was named Brand of the Year at both shows.'},
+  'a-creative':{type:'award',title:'Creative of the Year',show:'The One Show 2025',cat:'Individual honor',desc:'Danilo Boer, Global Creative Partner at FCB Global, was named Creative of the Year for the third year in a row.'},
+};
+
+// [id, name, role, org, discipline]
+const PEOPLE = [
+  ['p-kao','Grace Kao','Head of Global Business Marketing','o-spotify','d-client'],
+  ['p-frankel','Richard Frankel','Global Creative Director','o-spotify','d-client'],
+  ['p-evans','Bridget Evans','Global Director, Business Brand Marketing','o-spotify','d-client'],
+  ['p-levinsohn','Jessica Levinsohn','Global Business Brand Marketing Lead','o-spotify','d-client'],
+  ['p-mark','Sam Mark','Project Manager','o-spotify','d-client'],
+  ['p-bingham','Adrian Bingham','Head of Sales, AUNZ','o-spotify','d-client'],
+
+  ['p-armstrong','Emma Armstrong','CEO','o-fcb','d-account'],
+  ['p-santiago','Suzanne Santiago','Managing Director','o-fcb','d-account'],
+  ['p-graff','Tara Graff','SVP, Group Account Director','o-fcb','d-account'],
+  ['p-gwilt','Jessie Gwilt','Management Supervisor','o-fcb','d-account'],
+  ['p-stein','Sydney Stein','Management Supervisor','o-fcb','d-account'],
+  ['p-garcia','Stefany Garcia','Senior Project Manager','o-fcb','d-account'],
+
+  ['p-sussman','Todd Sussman','Chief Strategy Officer','o-fcb','d-strategy'],
+  ['p-steele','Kelsey Steele','Planning Director','o-fcb','d-strategy'],
+  ['p-schonfeld','Michael Schonfeld','Planning Director','o-fcb','d-strategy'],
+
+  ['p-boer','Danilo Boer','Global Creative Partner','o-fcb','d-creative'],
+  ['p-aimette','Michael Aimette','Chief Creative Officer','o-fcb','d-creative'],
+  ['p-resch','Gary Resch','EVP, Executive Creative Director','o-fcb','d-creative'],
+  ['p-tavares','Eduardo Tavares','EVP, Executive Creative Director','o-fcb','d-creative'],
+  ['p-claeys','Pieter Claeys','Associate Creative Director','o-fcb','d-creative'],
+  ['p-schneider','Roxane Schneider','Associate Creative Director','o-fcb','d-creative'],
+  ['p-guzeloglu','Tufan Guzeloglu','Associate Creative Director','o-fcb','d-creative'],
+  ['p-demos','Michael Demos','Associate Creative Director','o-fcb','d-creative'],
+  ['p-dolsten','Simon Dolsten','Creative','o-fcb','d-creative'],
+
+  ['p-cheng','Sy-Jenq Cheng','Head of Art & Design','o-fcb','d-design'],
+  ['p-benitez','Eric Benitez','Design Director','o-fcb','d-design'],
+  ['p-fernandes','Simon Fernandes','Senior Designer','o-fcb','d-design'],
+  ['p-rocha','Victoria Rocha','Senior Art Director','o-fcb','d-design'],
+  ['p-ahn','Ella Ahn','Designer','o-fcb','d-design'],
+
+  ['p-williams','Nick Williams','SVP, Head of Production & Content','o-fcb','d-production'],
+  ['p-meyerhoff','Margot Meyerhoff','Senior Integrated Producer','o-fcb','d-production'],
+  ['p-arora','Sachin Arora','VP, Executive Producer','o-fcb','d-production'],
+  ['p-carrel','Alina Carrel','Senior Producer','o-fcb','d-production'],
+  ['p-phipps','Rhea Phipps','Senior Producer','o-fcb','d-production'],
+  ['p-katz','Janice Katz','Director of Business Affairs','o-fcb','d-production'],
+
+  ['p-waters','Chris Waters','Visual Artist & Project Manager','o-ulc','d-tech'],
+  ['p-adamopoulos','George Adamopoulos','Lead Creative Coding & Software Development','o-ulc','d-tech'],
+  ['p-polychronaki','Eleana Polychronaki','Creative Coding & Software Development','o-ulc','d-tech'],
+  ['p-pappas','Philip Pappas','Technical Artist','o-ulc','d-tech'],
+
+  ['p-monti','Rafael Monti','Animation Director (Maldita), Editor','o-colossal','d-post'],
+  ['p-kluge','Vinicius Kluge','Animation Director (Maldita)','o-colossal','d-post'],
+  ['p-gameiro','Diogo Gameiro','Executive Creative Director','o-colossal','d-post'],
+  ['p-machado','João Machado','Executive Creative Director','o-colossal','d-post'],
+  ['p-lubiazi','Eduardo Lubiazi','Executive Creative Director','o-colossal','d-post'],
+  ['p-maia','Daniel Maia','Head of Post Production','o-colossal','d-post'],
+  ['p-cherobim','Carol Cherobim','Executive Producer','o-colossal','d-post'],
+  ['p-yamashita','Mauricio Kazu Yamashita','Producer','o-colossal','d-post'],
+  ['p-sankari','Tameem Sankari','Code Animation','o-colossal','d-post'],
+
+  ['p-summit','John Summit','Artist, “Shiver”',null,'d-music'],
+
+  ['p-guedes','Caja Guedes','Post-Production Direction, Editor','o-bogota','d-film'],
+  ['p-azzi','Denise Azzi','Post-Production Direction, Design & Motion','o-bogota','d-film'],
+];
+PEOPLE.forEach(([id,title,role,org])=>N[id]={type:'person',title,role,org});
+
+// every person here is credited on the one case
+const CRED = PEOPLE.map(([p,,role,,d])=>({p,c:'c1',role,d}));
+
+const CO = [
+  ['c1','o-spotify','Client'],['c1','o-fcb','Agency'],['c1','o-ulc','Production'],
+  ['c1','o-colossal','Animation & Post'],['c1','o-dahouse','Audio'],['c1','o-bogota','Case film'],
+].map(([c,o,role])=>({c,o,role}));
+
+// award → target
+const AW = [
+  ['a-oneshow','c1'],['a-adc','c1'],['a-cannes','c1'],['a-dad','c1'],['a-clio','c1'],
+  ['a-agency','o-fcb'],['a-brand','o-spotify'],['a-creative','p-boer'],
+].map(([a,t])=>({a,t}));
+
+const DORDER = ['d-client','d-account','d-strategy','d-creative','d-design','d-production','d-tech','d-post','d-music','d-film'];
+
+// derived labels
+for (const id in N){
+  const n=N[id];
+  if(n.type==='case') n.sub='Spotify × FCB New York';
+  if(n.type==='person') n.sub=n.role;
+  if(n.type==='org') n.sub=n.kind;
+  if(n.type==='award') n.sub=n.show;
+}
+const uniq = arr => [...new Set(arr)];
+const orgName = o => o ? N[o].title : 'Independent artist';
+const targetOf = a => AW.find(x=>x.a===a).t;
+const peopleIn = (d,o) => PEOPLE.filter(p=>p[4]===d && (o===undefined || p[3]===o)).map(p=>p[0]);
+// which organization staffs each discipline (majority), or null
+const discOrg = d => { const c={}; PEOPLE.filter(p=>p[4]===d&&p[3]).forEach(p=>c[p[3]]=(c[p[3]]||0)+1); const e=Object.entries(c).sort((a,b)=>b[1]-a[1]); return e.length?e[0][0]:null; };
+
+/* ------------------------------------------------------------------
+   NEIGHBORHOOD FOR EACH NODE TYPE
+------------------------------------------------------------------- */
+function graphFor(f){
+  const t=N[f].type, first=[], second=[], seen=new Set([f]), per={};
+  const add1=(id,o={})=>{ if(!seen.has(id)){ seen.add(id); first.push({id,...o}); } };
+  const add2=(id,parent,o={},cap=4)=>{
+    per[parent]=per[parent]||0;
+    if(!seen.has(id) && per[parent]<cap && second.length<20){ seen.add(id); per[parent]++; second.push({id,parent,...o}); }
+  };
+
+  if(t==='case'){
+    // case → organizations → the disciplines each one staffs
+    // interleave organizations and awards so busy organizations get room for their teams
+    const hubsOf=o=>DORDER.filter(d=>discOrg(d)===o).length;
+    const orgs=CO.filter(x=>x.c===f).sort((a,b)=>hubsOf(b.o)-hubsOf(a.o));
+    const aws=AW.filter(x=>x.t===f);
+    orgs.forEach((x,i)=>{
+      add1(x.o,{note:x.role});
+      if(aws[i]) add1(aws[i].a,{dash:true,note:N[aws[i].a].show});
+    });
+    aws.slice(orgs.length).forEach(x=>add1(x.a,{dash:true,note:N[x.a].show}));
+    DORDER.filter(d=>!discOrg(d)).forEach(d=>add1(d,{badge:peopleIn(d).length}));
+    DORDER.forEach(d=>{ const o=discOrg(d); if(o) add2(d,o,{badge:peopleIn(d).length},6); });
+  }
+  if(t==='org'){
+    CO.filter(x=>x.o===f).forEach(x=>add1(x.c,{note:x.role}));
+    const hubs=DORDER.filter(d=>peopleIn(d,f).length);
+    hubs.forEach(d=>add1(d,{badge:peopleIn(d,f).length}));
+    AW.filter(x=>x.t===f).forEach(x=>add1(x.a,{dash:true,note:N[x.a].show}));
+    hubs.forEach(d=>peopleIn(d,f).forEach(p=>add2(p,d,{},hubs.length>2?2:4)));
+  }
+  if(t==='person'){
+    const p=PEOPLE.find(x=>x[0]===f);
+    CRED.filter(x=>x.p===f).forEach(x=>add1(x.c,{note:x.role}));
+    if(p[3]) add1(p[3],{note:N[p[3]].kind});
+    add1(p[4],{badge:peopleIn(p[4]).length});
+    AW.filter(x=>x.t===f).forEach(x=>add1(x.a,{dash:true,note:N[x.a].show}));
+    peopleIn(p[4]).forEach(q=>add2(q,p[4],{},6));
+  }
+  if(t==='disc'){
+    peopleIn(f).forEach(p=>add1(p,{note:N[p].role}));
+    peopleIn(f).forEach(p=>{ const o=N[p].org; if(o) add2(o,p,{},1); });
+  }
+  if(t==='award'){
+    const tg=targetOf(f);
+    add1(tg,{note:TYPE_LABEL[N[tg].type]});
+    if(N[tg].type==='case') CO.filter(x=>x.c===tg).forEach(x=>add2(x.o,tg,{},6));
+    if(N[tg].type==='org') CO.filter(x=>x.o===tg).forEach(x=>add2(x.c,tg));
+    if(N[tg].type==='person' && N[tg].org) add2(N[tg].org,tg);
+  }
+  return {first,second};
+}
+const TYPE_LABEL={case:'Case',org:'Organization',person:'Person',disc:'Discipline',award:'Award'};
+
+/* ------------------------------------------------------------------
+   DRAWING
+------------------------------------------------------------------- */
+const NS='http://www.w3.org/2000/svg';
+const gE=document.getElementById('edges'), gN=document.getElementById('nodes');
+const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+let W,H,cx,cy,R,F=null,EDGES=[];
+const els={}, visited=new Set();
+
+function hash(s){let h=2166136261;for(const ch of s){h^=ch.charCodeAt(0);h=Math.imul(h,16777619)}return ((h>>>0)%10000)/10000}
+
+function measure(){
+  W=innerWidth; H=innerHeight;
+  if(W<760){ cx=W/2; cy=H*0.29; R=Math.min(W*0.32,125); }
+  else{
+    const pw=300+Math.max(24,W*0.06)+40;
+    cx=(W-pw)/2+20; cy=H/2;
+    R=Math.max(130,Math.min((W-pw)*0.22,H*0.26,205));
+  }
+}
+
+function layout(f,first,second){
+  const P={[f]:{x:cx,y:cy,op:1,role:'focus'}};
+  const n=first.length, base=hash(f)*Math.PI*2;
+  first.forEach((nb,i)=>{
+    const a=base+i*Math.PI*2/Math.max(n,1);
+    const r=R*(0.82+0.32*hash(f+nb.id));
+    P[nb.id]={x:cx+r*Math.cos(a),y:cy+r*Math.sin(a)*0.9,a,op:1,role:'first',...nb};
+  });
+  const byParent={};
+  second.forEach(s=>(byParent[s.parent]=byParent[s.parent]||[]).push(s));
+  for(const pid in byParent){
+    const kids=byParent[pid], p=P[pid], k=kids.length;
+    const spread=Math.min(2.1,0.72*(k-1));
+    kids.forEach((s,j)=>{
+      const a=p.a+(k>1?-spread/2+spread*j/(k-1):0);
+      const r=R*(0.48+0.05*Math.min(k,6))+(j%2?34:0)+8*hash(s.id);
+      P[s.id]={x:p.x+r*Math.cos(a),y:p.y+r*Math.sin(a)*0.9,op:0.42,role:'second',parent:pid,badge:s.badge};
+    });
+  }
+  return P;
+}
+
+function star(r1,r2,k){const p=[];for(let i=0;i<k*2;i++){const r=i%2?r2:r1,a=i*Math.PI/k-Math.PI/2;p.push((r*Math.cos(a)).toFixed(2)+','+(r*Math.sin(a)).toFixed(2))}return p.join(' ')}
+function hexPts(r){const p=[];for(let i=0;i<6;i++){const a=Math.PI/3*i;p.push((r*Math.cos(a)).toFixed(2)+','+(r*Math.sin(a)).toFixed(2))}return p.join(' ')}
+
+function shape(id,state,badge,scale=1){
+  const t=N[id].type, fill=state==='focus'?'var(--sel)':'var(--bg)', s='stroke="var(--ink)" stroke-width="1"';
+  if(id===HOME) return `<polygon class="ring" points="${star(8.5*scale,6*scale,11)}" fill="var(--red)" stroke="var(--ink)" stroke-width=".7"/>`;
+  if(t==='case') return `<rect class="ring" x="-5.5" y="-5.5" width="11" height="11" fill="${fill}" ${s}/>`+(state==='focus'?'<rect x="-2" y="-2" width="4" height="4" fill="var(--ink)"/>':'');
+  if(t==='org') return `<polygon class="ring" points="0,-6.5 6.8,5.2 -6.8,5.2" fill="${fill}" ${s} stroke-linejoin="round"/>`+(state==='focus'?'<circle cy="1.6" r="1.4" fill="var(--ink)"/>':'');
+  if(t==='person') return `<circle class="ring" r="5.5" fill="${fill}" ${s}/>`;
+  if(t==='disc') return `<polygon class="ring" points="${hexPts(8)}" fill="${fill}" ${s}/><text class="badge">${badge??''}</text>`;
+  if(t==='award') return `<circle class="ring" r="5.5" fill="var(--ink)" ${s}/><circle r="1.7" fill="${state==='focus'?'var(--sel)':'var(--bg)'}"/>`;
+}
+
+function wrap(t,max=17){
+  const w=t.split(' '),lines=[''];
+  w.forEach(x=>{const l=lines[lines.length-1]; if((l+' '+x).trim().length>max && l) lines.push(x); else lines[lines.length-1]=(l+' '+x).trim();});
+  return lines.slice(0,3);
+}
+const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+
+function nodeInner(id,p){
+  const n=N[id], state=p.role==='focus'?'focus':'n';
+  const badge = p.badge ?? (n.type==='disc'? uniq(CRED.filter(x=>x.d===id).map(x=>x.p)).length : '');
+  const struck = visited.has(id) && p.role!=='focus' ? ' struck':'';
+  const lines=wrap(n.title);
+  let y=n.type==='disc'?21:19, out=`<circle r="16" fill="transparent"/>`+shape(id,state,badge);
+  out+=`<text class="lbl${struck}" y="${y}">`+lines.map((l,i)=>`<tspan x="0" dy="${i?13:0}">${esc(l)}</tspan>`).join('')+`</text>`;
+  y+=13*(lines.length-1)+11;
+  const sub = p.role==='focus' ? n.sub : (p.role==='first' ? p.note : null);
+  if(sub) out+=`<text class="sub" y="${y}">`+wrap(sub,22).map((l,i)=>`<tspan x="0" dy="${i?10:0}">${esc(l)}</tspan>`).join('')+`</text>`;
+  return out;
+}
+
+function ensureNode(id){
+  if(els[id]) return els[id];
+  const g=document.createElementNS(NS,'g');
+  g.setAttribute('class','n'); g.setAttribute('tabindex','0'); g.setAttribute('role','button');
+  g.setAttribute('aria-label',N[id].title);
+  g.addEventListener('click',()=>go(id));
+  g.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();go(id);}});
+  gN.appendChild(g);
+  return els[id]={g,cur:null};
+}
+
+function applyLayout(P){
+  const prevF = F && els[F] && els[F].cur ? els[F].cur : {x:cx,y:cy};
+  for(const id in P){
+    const p=P[id], fresh=!els[id];
+    const o=ensureNode(id);
+    o.g.innerHTML=nodeInner(id,p);
+    if(fresh||!o.cur){
+      const src = (p.parent && els[p.parent] && els[p.parent].cur) || prevF;
+      o.cur={x:src.x,y:src.y,op:0};
+    }
+    o.from={...o.cur}; o.to={x:p.x,y:p.y,op:p.op}; o.dead=false;
+    o.g.style.pointerEvents='auto';
+  }
+  for(const id in els){ if(!P[id]){ const o=els[id]; o.from={...o.cur}; o.to={...o.cur,op:0}; o.dead=true; o.g.style.pointerEvents='none'; } }
+  // foco por cima
+  if(els[F]) gN.appendChild(els[F].g);
+}
+
+function move(p,q,d){const dx=q.x-p.x,dy=q.y-p.y,l=Math.hypot(dx,dy)||1;return {x:p.x+dx/l*Math.min(d,l/2),y:p.y+dy/l*Math.min(d,l/2)}}
+function drawEdges(){
+  let s='';
+  EDGES.forEach(e=>{
+    const A=els[e.a]&&els[e.a].cur, B=els[e.b]&&els[e.b].cur; if(!A||!B) return;
+    const c={x:A.x+(B.x-A.x)*0.18,y:A.y+(B.y-A.y)*0.82};
+    const st=move(A,c,N[e.a].type==='disc'?10:9), en=move(B,c,N[e.b].type==='disc'?10:9);
+    const op=Math.min(A.op,B.op);
+    s+=`<path class="${e.k}" opacity="${op.toFixed(3)}" d="M${st.x.toFixed(1)},${st.y.toFixed(1)} L${c.x.toFixed(1)},${c.y.toFixed(1)} L${en.x.toFixed(1)},${en.y.toFixed(1)}"/>`;
+  });
+  gE.innerHTML=s;
+}
+
+let raf;
+const ease=t=>t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;
+function animate(){
+  cancelAnimationFrame(raf);
+  const t0=performance.now(), dur=reduce?0:720;
+  const step=now=>{
+    const k=dur?Math.min(1,(now-t0)/dur):1, e=ease(k);
+    for(const id in els){
+      const o=els[id];
+      o.cur={x:o.from.x+(o.to.x-o.from.x)*e,y:o.from.y+(o.to.y-o.from.y)*e,op:o.from.op+(o.to.op-o.from.op)*e};
+      o.g.setAttribute('transform',`translate(${o.cur.x.toFixed(1)},${o.cur.y.toFixed(1)})`);
+      o.g.style.opacity=o.cur.op.toFixed(3);
+    }
+    drawEdges();
+    if(k<1) raf=requestAnimationFrame(step);
+    else for(const id in els) if(els[id].dead){ els[id].g.remove(); delete els[id]; }
+  };
+  raf=requestAnimationFrame(step);
+}
+
+function render(){
+  const {first,second}=graphFor(F);
+  EDGES=[...first.map(n=>({a:F,b:n.id,k:n.dash?'dash':''})),...second.map(n=>({a:n.parent,b:n.id,k:'dot'}))];
+  applyLayout(layout(F,first,second));
+  animate();
+}
+
+/* ------------------------------------------------------------------
+   PANEL
+------------------------------------------------------------------- */
+function icon(t){
+  const s='stroke="currentColor" stroke-width="1.1"';
+  if(t==='case') return `<svg viewBox="-5 -5 10 10"><rect x="-4" y="-4" width="8" height="8" fill="currentColor"/></svg>`;
+  if(t==='org') return `<svg viewBox="-5 -5 10 10"><polygon points="0,-4.6 4.8,4 -4.8,4" fill="currentColor"/></svg>`;
+  if(t==='person') return `<svg viewBox="-5 -5 10 10"><circle r="4" fill="none" ${s}/></svg>`;
+  if(t==='disc') return `<svg viewBox="-5 -5 10 10"><polygon points="${hexPts(4.6)}" fill="none" ${s}/></svg>`;
+  if(t==='award') return `<svg viewBox="-5 -5 10 10"><circle r="4.2" fill="currentColor"/></svg>`;
+  if(t==='grid') return `<svg viewBox="0 0 10 10"><g fill="currentColor"><rect x="0" y="1" width="3" height="1.4"/><rect x="5" y="1" width="5" height="1.4"/><rect x="0" y="4.3" width="3" height="1.4"/><rect x="5" y="4.3" width="5" height="1.4"/><rect x="0" y="7.6" width="3" height="1.4"/><rect x="5" y="7.6" width="5" height="1.4"/></g></svg>`;
+  if(t==='swap') return `<svg viewBox="0 0 10 10" fill="none" ${s}><path d="M1 3h8M6.5 .8 9 3 6.5 5.2M9 7H1M3.5 4.8 1 7l2.5 2.2"/></svg>`;
+  if(t==='up') return `<svg viewBox="0 0 10 10" fill="none" ${s}><path d="M1.5 8.5 8.5 1.5M3 1.5h5.5V7"/></svg>`;
+  if(t==='people') return `<svg viewBox="0 0 10 10" fill="none" ${s}><circle cx="3.3" cy="5" r="2.6"/><circle cx="6.7" cy="5" r="2.6"/></svg>`;
+}
+
+let mode='index';
+const openIdx=new Set(['case']);
+let openSec=new Set();
+
+const lk=(id,cls='')=>`<button class="lk${visited.has(id)&&id!==F?' struck':''} ${cls}" data-go="${id}">${esc(N[id].title)}</button>`;
+const li=(id,r)=>`<div class="li">${lk(id)}<span class="r">${esc(r||'')}</span></div>`;
+const stack=(id,s)=>`<div class="stack">${lk(id)}<div class="s2${visited.has(id)&&id!==F?' struck':''}">${esc(s||'')}</div></div>`;
+const kv=(k,v)=>`<div class="li"><span>${esc(k)}</span><span class="r">${esc(v)}</span></div>`;
+
+function sec(key,ic,label,html){
+  const open=openSec.has(key);
+  return `<div class="sec"><button class="row" data-sec="${key}" aria-expanded="${open}"><span class="ic">${icon(ic)}</span>${label}<span class="act">${open?'−':'+'}</span></button>${open?`<div class="body">${html}</div>`:''}</div>`;
+}
+
+function indexCard(){
+  const head=`<button class="row" data-act="idx" aria-expanded="${mode==='index'}"><span class="ic"><span class="dotred"></span></span>Index<span class="act">${mode==='index'?'−':'←'}</span></button>`;
+  if(mode!=='index') return `<div class="card">${head}</div>`;
+  const groups=[
+    ['case','Cases','Award-winning work, each with its full credit list.',Object.keys(N).filter(k=>N[k].type==='case'),id=>`${N[id].sub}, ${N[id].years}`],
+    ['org','Organizations','The client, the agency and every studio credited on the work.',CO.map(x=>x.o),id=>`${N[id].kind}, ${N[id].city}`],
+    ['disc','Disciplines','The links in the chain, in the order the work usually moves through them.',DORDER,id=>`${peopleIn(id).length} ${peopleIn(id).length===1?'person':'people'}`],
+    ['person','People','Everyone credited, from the client’s marketing team to the animators.',PEOPLE.map(p=>p[0]).sort((a,b)=>N[a].title.localeCompare(N[b].title)),id=>`${N[id].role}, ${orgName(N[id].org)}`],
+    ['award','Awards','Honors given to the case, and to the people and companies behind it.',AW.map(x=>x.a),id=>N[id].show],
+  ];
+  let h=`<div class="intro"><p>A credits network. Every award-winning case connects the brand, the client and everyone who made the work happen, from strategy to post-production.</p><p>This example maps Spotify “Spreadbeats”, Best of Show at The One Show 2025. Click any point to move through it. Anything you’ve already opened is struck through.</p></div>`;
+  groups.forEach(([t,label,note,ids,sub])=>{
+    const open=openIdx.has(t);
+    h+=`<div class="sec"><button class="row" data-idx="${t}" aria-expanded="${open}"><span class="ic">${icon(t)}</span>${label}<span class="act">${open?'−':'+'}</span></button>`;
+    if(open) h+=`<div class="body"><div class="note">${note}</div>${ids.map(id=>stack(id,sub(id))).join('')}</div>`;
+    h+=`</div>`;
+  });
+  return `<div class="card">${head}${h}</div>`;
+}
+
+function detailCard(){
+  const n=N[F], t=n.type;
+  let h=`<button class="row" data-act="close"><span class="ic">${icon(t)}</span>${TYPE_LABEL[t]}<span class="act" aria-label="Back to index">×</span></button>`;
+  h+=`<div class="body" style="padding-bottom:4px"><div class="ttl">${esc(n.title)}</div>`;
+  let secs='';
+
+  if(t==='case'){
+    h+=`<div class="s1">${esc(n.sub)}</div><div class="s2">${esc(n.meta)}</div><div class="s2">${n.years}</div>`;
+    h+=`<div class="desc">${n.desc.map(p=>`<p>${esc(p)}</p>`).join('')}</div>`;
+    let credits=`<div class="grp">Organizations</div>`+CO.filter(x=>x.c===F).map(x=>li(x.o,x.role)).join('');
+    DORDER.forEach(d=>{
+      const ps=CRED.filter(x=>x.c===F&&x.d===d);
+      if(ps.length) credits+=`<div class="grp"><button class="lk" data-go="${d}">${N[d].title}</button></div>`+ps.map(x=>li(x.p,x.role)).join('');
+    });
+    secs+=sec('credits','grid','Credits',credits);
+    secs+=sec('awards','award','Awards',AW.filter(x=>x.t===F).map(x=>stack(x.a,`${N[x.a].show}, ${N[x.a].cat}`)).join(''));
+    const orgs=CO.filter(x=>x.c===F).map(x=>x.o), cities=uniq(orgs.map(o=>N[o].city));
+    secs+=sec('network','swap','Network',
+      `<div class="note">How far the credit chain reaches for this one piece of work.</div>`+
+      kv('People credited',CRED.filter(x=>x.c===F).length)+kv('Organizations',orgs.length)+kv('Disciplines',uniq(CRED.filter(x=>x.c===F).map(x=>x.d)).length)+kv('Cities',cities.length)+
+      `<div class="grp">By city</div>`+cities.map(c=>kv(c,orgs.filter(o=>N[o].city===c).map(o=>N[o].title).join(', '))).join(''));
+    secs+=sec('sources','up','Sources',`<div class="note">Credits are compiled from public sources and are not exhaustive.</div>`+n.sources.map(([l,u])=>`<div class="stack"><a class="lk" href="${u}" target="_blank" rel="noopener">${esc(l)}</a></div>`).join(''));
+  }
+
+  if(t==='person'){
+    const p=PEOPLE.find(x=>x[0]===F), team=peopleIn(p[4]).filter(x=>x!==F), aw=AW.filter(x=>x.t===F);
+    h+=`<div class="s1">${esc(n.role)}</div><div class="s2">${esc(orgName(n.org))}${n.org?', '+esc(N[n.org].city):''}</div>`;
+    h+=`<div class="desc"><p>Credited on Spreadbeats in ${esc(N[p[4]].title)}, one of ${peopleIn(p[4]).length} ${peopleIn(p[4]).length===1?'person':'people'} in that link of the chain and ${CRED.length} across the whole case.</p></div>`;
+    secs+=sec('credits','grid','Credits',CRED.filter(x=>x.p===F).map(x=>`<div class="stack">${lk(x.c)}<div class="s1">${esc(x.role)}</div><div class="s2">${N[x.d].title}, ${N[x.c].years}</div></div>`).join(''));
+    secs+=sec('team','people','Same team',team.length?team.map(q=>li(q,N[q].role)).join(''):'<div class="note">The only person credited in this discipline.</div>');
+    let conn=n.org?li(n.org,N[n.org].kind):'';
+    conn+=li(p[4],'Discipline');
+    if(aw.length) conn+=`<div class="grp">Personal honors</div>`+aw.map(x=>stack(x.a,N[x.a].show)).join('');
+    secs+=sec('connections','swap','Connections',conn);
+  }
+
+  if(t==='org'){
+    h+=`<div class="s1">${esc(n.kind)}</div><div class="s2">${esc(n.city)}</div><div class="desc"><p>${esc(n.desc)}</p></div>`;
+    secs+=sec('cases','case','Cases',CO.filter(x=>x.o===F).map(x=>li(x.c,x.role)).join(''));
+    let ppl='';
+    DORDER.forEach(d=>{ const ps=peopleIn(d,F); if(ps.length) ppl+=`<div class="grp"><button class="lk" data-go="${d}">${N[d].title}</button></div>`+ps.map(q=>li(q,N[q].role)).join(''); });
+    secs+=sec('people','people','People',ppl||'<div class="note">No individuals are publicly credited for this company.</div>');
+    const aw=AW.filter(x=>x.t===F);
+    if(aw.length) secs+=sec('awards','award','Company honors',aw.map(x=>stack(x.a,N[x.a].show)).join(''));
+  }
+
+  if(t==='award'){
+    const tg=targetOf(F);
+    h+=`<div class="s1">${esc(n.show)}</div><div class="s2">${esc(n.cat)}</div><div class="desc"><p>${esc(n.desc)}</p></div>`;
+    secs+=sec('target',N[tg].type,'Awarded to',stack(tg,N[tg].sub));
+    if(n.breakdown) secs+=sec('breakdown','grid','Breakdown',n.breakdown.map(([k,v])=>`<div class="stack"><div>${esc(k)}</div><div class="s1">${esc(v)}</div></div>`).join(''));
+    if(n.golds) secs+=sec('golds','award','Gold Pencils',n.golds.map(g=>`<div class="li"><span>${esc(g)}</span></div>`).join(''));
+    if(N[tg].type==='case') secs+=sec('shared','people','Shared by',`<div class="note">Everyone credited on the work shares this honor.</div>`+kv('People',CRED.filter(x=>x.c===tg).length)+CO.filter(x=>x.c===tg).map(x=>li(x.o,`${PEOPLE.filter(p=>p[3]===x.o).length} people`)).join(''));
+  }
+
+  if(t==='disc'){
+    h+=`<div class="s2">Link ${DORDER.indexOf(F)+1} of ${DORDER.length} in the chain</div><div class="desc"><p>${esc(n.desc)}</p></div>`;
+    let body='';
+    const orgs=uniq(peopleIn(F).map(p=>N[p].org));
+    orgs.forEach(o=>{ body+=`<div class="grp">${o?`<button class="lk" data-go="${o}">${N[o].title}</button>`:'Independent'}</div>`+peopleIn(F).filter(p=>N[p].org===o).map(p=>li(p,N[p].role)).join(''); });
+    secs+=sec('people','people','People',body);
+    const i=DORDER.indexOf(F);
+    let chain='';
+    if(i>0) chain+=li(DORDER[i-1],'Before');
+    if(i<DORDER.length-1) chain+=li(DORDER[i+1],'After');
+    secs+=sec('chain','swap','Chain',chain);
+  }
+
+  h+=`</div>`;
+  return `<div class="card">${h}<div>${secs}</div></div>`;
+}
+
+const panel=document.getElementById('panel');
+function renderPanel(){ panel.innerHTML=indexCard()+(mode==='detail'?detailCard():''); }
+panel.addEventListener('click',e=>{
+  const b=e.target.closest('button'); if(!b) return;
+  if(b.dataset.go){ go(b.dataset.go); return; }
+  if(b.dataset.sec){ const k=b.dataset.sec; openSec.has(k)?openSec.delete(k):openSec.add(k); renderPanel(); return; }
+  if(b.dataset.idx){ const k=b.dataset.idx; openIdx.has(k)?openIdx.delete(k):openIdx.add(k); renderPanel(); return; }
+  if(b.dataset.act==='idx'){ mode = mode==='index' ? 'detail' : 'index'; renderPanel(); return; }
+  if(b.dataset.act==='close'){ mode='index'; renderPanel(); }
+});
+
+const DEFAULT_SEC={case:'credits',person:'credits',org:'people',award:'breakdown',disc:'people'};
+function go(id){
+  if(F) visited.add(F);
+  F=id; mode='detail';
+  openSec=new Set([DEFAULT_SEC[N[id].type]]);
+  render(); renderPanel();
+  panel.scrollTop=0;
+}
+
+document.getElementById('legend').innerHTML =
+  `<b>Credits</b><br>`+
+  [['c1','case','Case'],['o-fcb','org','Organization'],['d-client','disc','Discipline'],['p-kao','person','Person'],['a-adc','award','Award']]
+    .map(([id,t,l])=>`<div class="it"><svg viewBox="-8 -8 16 16">${t==='case'?'<rect x="-5.5" y="-5.5" width="11" height="11" fill="var(--bg)" stroke="var(--ink)"/>':shape(id,'n','')}</svg>${l}</div>`).join('')+
+  `<div class="note">Solid line: direct credit. Dashed: award. Dotted: second degree. Example data from Spotify “Spreadbeats” by FCB New York, compiled from public credits.</div>`;
+
+addEventListener('resize',()=>{ measure(); render(); });
+addEventListener('keydown',e=>{ if(e.key==='Escape'){ mode='index'; renderPanel(); } });
+
+measure();
+F=HOME; render(); renderPanel();
+</script>
+</body>
+</html>
