@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Strategic North Star — orbit motion</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{width:100%;height:100%;overflow:hidden;background:#fff}
+  body{font-family:Inter,"Helvetica Neue",Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+
+  /* 1920x1080 stage — same frame as Figma, scaled to fit */
+  #stage{position:absolute;left:50%;top:50%;width:1920px;height:1080px;transform-origin:0 0}
+  svg#wires{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+
+  .node{position:absolute;left:0;top:0;will-change:transform;white-space:nowrap}
+
+  .core{
+    width:316px;height:142px;border-radius:10px;background:#000;color:#fff;
+    display:flex;align-items:center;justify-content:center;text-align:center;
+    font-size:42px;font-weight:500;line-height:1;letter-spacing:-0.02em;white-space:normal;
+  }
+  .pillar{
+    height:136px;padding:0 50px;border-radius:44px;background:#8f8f8f;color:#fff;
+    display:flex;align-items:center;font-size:42px;font-weight:400;letter-spacing:-0.01em;
+  }
+  .sub{
+    height:44px;padding:0 24px;border-radius:22px;background:#fff;color:#000;
+    border:1px solid #9a9a9a;display:flex;align-items:center;font-size:18px;font-weight:600;
+  }
+
+  #hud{position:fixed;left:16px;bottom:14px;font-size:11px;color:#9a9a9a;user-select:none}
+  #hud button{font:inherit;color:#555;background:#eee;border:0;border-radius:6px;padding:5px 9px;cursor:pointer;margin-right:8px}
+  #hud button:focus-visible{outline:2px solid #000;outline-offset:2px}
+  body.clean #hud{display:none}
+</style>
+</head>
+<body>
+<div id="stage"><svg id="wires"></svg></div>
+<div id="hud"><button id="toggle" type="button">Pause</button>Space pauses, H hides controls</div>
+
+<script>
+/* ---------- CONFIG ---------- */
+const CONFIG = {
+  W: 1920, H: 1080,
+  LOOP: 40,          // seconds; last frame matches the first exactly
+  pillarDrift: 22,   // px the pillars wander around their Figma position
+  swayY: 0.55,       // radians of 3D sway around the vertical axis
+  swayX: 0.35,       // radians of 3D sway around the horizontal axis
+  spin: 0.12,        // radians of in-plane rotation
+  perspective: 900,
+};
+
+/* Positions taken from the Figma frame (pixel centers, 1920x1080) */
+const CORE = { x: 960, y: 510, label: "The Strategic<br>North Star" };
+const DATA = [
+  { name: "Discovery", x: 469, y: 424, subs: [
+    ["Cluster", 371, 277], ["Network Map", 601, 288], ["Strip", 250, 362],
+    ["Immersion", 163, 459], ["Depth & Dimension", 321, 560],
+  ]},
+  { name: "Knowledge", x: 1541, y: 321, subs: [
+    ["Benchmarking", 1430, 120], ["Tools", 1834, 192], ["Path / History", 1209, 210],
+    ["Sharing", 1489, 477], ["Export", 1678, 450],
+  ]},
+  { name: "Action", x: 1097, y: 835, subs: [
+    ["Editorial", 1259, 741], ["Related work", 1456, 807], ["Case anatomy", 732, 842],
+    ["Credits / People", 857, 943], ["Context panel", 1381, 956],
+  ]},
+];
+
+/* ---------- BUILD ---------- */
+const stage = document.getElementById("stage");
+const svg = document.getElementById("wires");
+const NS = "http://www.w3.org/2000/svg";
+const TAU = Math.PI * 2;
+
+function node(cls, html, z) {
+  const d = document.createElement("div");
+  d.className = "node";
+  d.innerHTML = `<div class="${cls}">${html}</div>`;
+  d.style.zIndex = z;
+  stage.appendChild(d);
+  return d;
+}
+function wire(color) {
+  const l = document.createElementNS(NS, "line");
+  l.setAttribute("stroke", color);
+  l.setAttribute("stroke-width", 1);
+  svg.appendChild(l);
+  return l;
+}
+
+const pillars = DATA.map((p, i) => ({
+  ...p,
+  line: wire("#000"),
+  el: node("pillar", p.name, 500),
+  ph: i * 2.1,
+  subs: p.subs.map(([text, x, y], j) => ({
+    dx: x - p.x, dy: y - p.y,
+    line: wire("#9a9a9a"),
+    el: node("sub", text, 200),
+    bob: 2 + (j % 2), bobPh: j * 1.3,
+  })),
+}));
+const core = node("core", CORE.label, 1000);
+
+/* ---------- ANIMATE ---------- */
+const place = (n, x, y, s = 1) =>
+  n.style.transform = `translate(${x}px,${y}px) translate(-50%,-50%) scale(${s})`;
+function setLine(l, a, b, op = 1) {
+  l.setAttribute("x1", a.x); l.setAttribute("y1", a.y);
+  l.setAttribute("x2", b.x); l.setAttribute("y2", b.y);
+  l.setAttribute("stroke-opacity", op);
+}
+
+function render(t) {
+  const u = (t % CONFIG.LOOP) / CONFIG.LOOP;
+  const w = TAU * u;
+  place(core, CORE.x, CORE.y);
+
+  pillars.forEach((p, i) => {
+    // pillar: slow drift around its Figma position
+    const D = CONFIG.pillarDrift;
+    const pp = { x: p.x + D * Math.sin(w + p.ph), y: p.y + D * Math.sin(2 * w + p.ph) * 0.7 };
+    place(p.el, pp.x, pp.y);
+    setLine(p.line, CORE, pp);
+
+    // subs: pseudo-3D sway of the whole cluster around its pillar
+    const ay = CONFIG.swayY * Math.sin(w + p.ph);
+    const ax = CONFIG.swayX * Math.sin(w * 2 + p.ph + 1);
+    const az = CONFIG.spin * Math.sin(w + p.ph + 2);
+    const cy = Math.cos(ay), sy = Math.sin(ay), cx = Math.cos(ax), sx = Math.sin(ax);
+    const cz = Math.cos(az), sz = Math.sin(az);
+
+    p.subs.forEach(s => {
+      const br = 1 + 0.05 * Math.sin(w * s.bob + s.bobPh);
+      let x = s.dx * br, y = s.dy * br, z = 0;
+      [x, y] = [x * cz - y * sz, x * sz + y * cz];        // in-plane spin
+      [x, z] = [x * cy, -x * sy];                          // around vertical axis
+      [y, z] = [y * cx - z * sx, y * sx + z * cx];         // around horizontal axis
+      const k = CONFIG.perspective / (CONFIG.perspective - z);
+      const pos = { x: pp.x + x * k, y: pp.y + y * k };
+      place(s.el, pos.x, pos.y, k);
+      s.el.style.zIndex = Math.round(200 + z);
+      s.el.style.opacity = Math.min(1, 0.7 + 0.3 * k);
+      setLine(s.line, pp, pos, Math.min(1, 0.6 + 0.4 * k));
+    });
+  });
+}
+
+/* ---------- LOOP / CONTROLS ---------- */
+let playing = true, clock = 0, last = null;
+function frame(now) {
+  if (last !== null && playing) clock += (now - last) / 1000;
+  last = now;
+  render(clock);
+  requestAnimationFrame(frame);
+}
+function fit() {
+  const s = Math.min(innerWidth / CONFIG.W, innerHeight / CONFIG.H);
+  stage.style.transform = `scale(${s}) translate(-50%,-50%)`;
+}
+addEventListener("resize", fit); fit();
+
+const btn = document.getElementById("toggle");
+function toggle() { playing = !playing; btn.textContent = playing ? "Pause" : "Play"; }
+btn.addEventListener("click", toggle);
+addEventListener("keydown", e => {
+  if (e.code === "Space") { e.preventDefault(); toggle(); }
+  if (e.key.toLowerCase() === "h") document.body.classList.toggle("clean");
+});
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
